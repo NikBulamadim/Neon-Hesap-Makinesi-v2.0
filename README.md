@@ -19,8 +19,8 @@ Modern, estetik ve yüksek hassasiyetli hesaplamalar için tasarlanmış, Python
 
 * Dinamik Neon Temalar: * Karanlık ve Aydınlık Mod: Göz yormayan karanlık mod veya temiz bir görünüm sunan aydınlık mod seçeneği.
 
-* Renk Döngüsü: "T" tuşu veya menü aracılığıyla neon yeşil, mavi, mor ve sarı renk geçişleri.
-
+* Renk Döngüsü: Renkleri Özelleştir seçeneği ile kullanıcı zevkine göre ayarlanabilir renk seçimi
+  
 * Akıllı İşlem Geçmişi: * Yapılan tüm işlemler yerel olarak kaydedilir.
 
 * Geçmiş penceresinden eski işlemlere veya sonuçlara tek tıkla geri dönülebilir.
@@ -69,7 +69,7 @@ Kısa Yollar
  Tuş                            İşlev 
 0-9                         Sayı Girişi
 "+ , - , * , /",            Operatörler
-Enter / Return        Hesapla (=)
-Backspace             Son karakteri sil
-Esc / Del                Ekranı Temizle (C)
-T                            Neon Renk Temasını Değiştir
+Enter / Return              Hesapla (=)
+Backspace                 Son karakteri sil
+Esc / Del                 Ekranı Temizle (C)
+ 
