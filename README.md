@@ -1,5 +1,8 @@
-![resim1](4.png)
-![resim1](5.png)
+![resim1](1.png)
+![resim2](2.png)
+![resim3](3.png)
+![resim4](4.png)
+![resim5](5.png)
 
 
 Neon Hesap Makinesi (Neon Calculator)
