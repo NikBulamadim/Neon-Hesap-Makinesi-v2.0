@@ -1,13 +1,32 @@
+# this neon calc open source
+
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+
+# Geliştirme Notları:
+#
+# Kodu okudum ve kodu az da olsa anlayabildim.
+# PyQt kütüphanesini unutmuş olsamda eski deneyimlerim var.
+# Ölçeklendirme sorununu çözdüm ve hakkında sayfası ekledim.
+# Ve rastgele sayı ekleme özelliği de ekledim, bence eğlenceli bir özellik.
+# Bu benim için eğlenceli bir deneyim oldu. Gerçekten düzenli yazılmış.
+# Ayrıca R tuşuna da fonksiyon atadım, En zevfkli yeri orsıydı. 
+# - github.com/YigitC7 - yigitc7.com.tr
+
 import sys
 import os
 import re
 from decimal import Decimal, getcontext
+from random import randint 
 
 if os.environ.get('XDG_SESSION_TYPE') == 'wayland':
     if os.path.exists("/usr/bin/Xwayland") or os.path.exists("/usr/bin/X"):
         os.environ["QT_QPA_PLATFORM"] = "xcb"
+    # Yüksek DPI desteği
+    # YigitC7 Tarafından eklendi :)
+    os.environ["QT_AUTO_SCREEN_SCALE_FACTOR"] = "1"
+    os.environ["QT_ENABLE_HIGHDPI_SCALING"] = "1"
+    os.environ["QT_SCALE_FACTOR_ROUNDING_POLICY"] = "PassThrough"
 
 from PyQt5 import QtGui
 from PyQt5.QtWidgets import (
@@ -29,6 +48,32 @@ NEON_KIRMIZI = "#FF3131"
 NEON_MAVI = "#00D4FF"
 NEON_MOR = "#5800FF"
 NEON_SARI = "#FFF600"
+
+InfoWindowCss = ("""
+            QWidget {
+                background-color: #121212;
+            }
+            QLabel {
+                color: #E0E0E0;
+                font-family: 'Segoe UI', Arial, sans-serif;
+            }
+            #Baslik {
+                color: #00ADB5; 
+                font-size: 20px;
+                font-weight: bold;
+                padding-bottom: 5px;
+            }
+            #Icerik {
+                font-size: 15px;
+                background-color: #1E1E1E;
+                border-radius: 10px;
+                padding: 15px;
+            }
+            #AltBilgi {
+                color: #666666;
+                font-size: 11px;
+            }
+    """)
 
 DARK_USER_COLORS_DEFAULT = {
     "numbers": "#00ff9d",
@@ -384,6 +429,20 @@ class NeonHesapMakinesi(QWidget):
         self.settings_btn.setCursor(Qt.PointingHandCursor)
         self.settings_btn.setFocusPolicy(Qt.NoFocus)
 
+        # Benim(Yiğit) Eklediğim iki buton:
+        self.info_btn = QPushButton("Hakkında")
+        self.info_btn.setFixedSize(87, 30)
+        self.info_btn.setStyleSheet("QPushButton{color:white;}")
+        self.info_btn.setCursor(Qt.PointingHandCursor)
+        self.info_btn.setFocusPolicy(Qt.NoFocus)
+
+        self.random_btn = QPushButton("Rastgele sayı")
+        self.random_btn.setFixedSize(117, 30)
+        self.random_btn.setStyleSheet("QPushButton{color:white;}")
+        self.random_btn.setCursor(Qt.PointingHandCursor)
+        self.random_btn.setFocusPolicy(Qt.NoFocus)
+
+
         self.menu = QMenu(self)
         self.gecmis_act = self.menu.addAction("İşlem Geçmişi")
         self.menu.addSeparator()
@@ -419,12 +478,17 @@ class NeonHesapMakinesi(QWidget):
         self.custom_colors_act.triggered.connect(self.show_custom_colors_dialog)
 
         self.settings_btn.setMenu(self.menu)
+        self.info_btn.clicked.connect(self.Info_Window)
+        self.random_btn.clicked.connect(lambda: self.aksiyon( sembol=str(randint(1,9))))
 
         self.light_tema_act.triggered.connect(lambda: self.tema_degistir(1))
         self.dark_tema_act.triggered.connect(lambda: self.tema_degistir(0))       
         self.gecmis_act.triggered.connect(self.gecmisi_goster)
 
+        ust_bar.addWidget(self.random_btn)
+        ust_bar.addWidget(self.info_btn)
         ust_bar.addWidget(self.settings_btn)
+        
         layout.addLayout(ust_bar)
 
         self.ekran = QTextEdit()
@@ -453,6 +517,57 @@ class NeonHesapMakinesi(QWidget):
         layout.addLayout(self.grid)
 
         self.setLayout(layout)
+
+   # 1. Hatanın sebebi olan eksik fonksiyonu ekliyoruz
+    def show_custom_colors_dialog(self):
+        """Hata veren kısım: Buraya renk seçici veya ilgili ayarı ekleyebilirsin"""
+        from PyQt5.QtWidgets import QColorDialog
+        color = QColorDialog.getColor()
+        if color.isValid():
+            print("Seçilen Renk:", color.name())
+            # Burada hesap makinesinin renklerini değiştirecek kodları yazabilirsin
+
+    # İşte Benim Ekldiğim Hakkında Penceresi.
+    # Biraz uğraştırdı. ama güzel oldu
+    def Info_Window(self):
+        self.InfoWin = QWidget()
+        self.InfoWin.setWindowTitle("Geliştirici Bilgileri")
+        self.InfoWin.setFixedSize(400, 320)
+
+        self.InfoWin.setStyleSheet(InfoWindowCss)
+
+        layout = QVBoxLayout()
+        layout.setContentsMargins(25, 25, 25, 25)
+        layout.setSpacing(15)
+
+        baslik = QLabel("NEON HESAP MAKİNESİ")
+        baslik.setObjectName("Baslik")
+        baslik.setAlignment(Qt.AlignCenter)
+
+        info = QLabel(
+            "<div style='text-align: center;'>"
+            "<a href='https://github.com/NikBulamadim'><b>Berkay Çınar Başpınar</b></a><br>"
+            "<span style='color: #888;'>Yapımcı & Baş Geliştirici</span><br><br>"
+            "<a href='https://github.com/yigitc7'><b>Yiğit Çıtak</b></a><br>"
+            "<span style='color: #888;'>Geliştirici</span>"
+            "</div>"
+        )
+        info.setObjectName("Icerik")
+        info.setWordWrap(True)
+        info.setOpenExternalLinks(True)
+        info.setTextInteractionFlags(Qt.LinksAccessibleByMouse)
+
+        alt_bilgi = QLabel("v2 | 2026 Neon Calc")
+        alt_bilgi.setObjectName("AltBilgi")
+        alt_bilgi.setAlignment(Qt.AlignCenter)
+
+        layout.addWidget(baslik)
+        layout.addWidget(info)
+        layout.addStretch()
+        layout.addWidget(alt_bilgi)
+
+        self.InfoWin.setLayout(layout)
+        self.InfoWin.show()
 
     def hassasiyet_kaydet(self, yeni_hassasiyet):
         try:
@@ -784,6 +899,7 @@ class NeonHesapMakinesi(QWidget):
         elif key in [Qt.Key_Enter, Qt.Key_Return]: sembol = "="
         elif key == Qt.Key_Backspace: sembol = "BACK"
         elif key in [Qt.Key_Delete, Qt.Key_Escape]: sembol = "C"
+        elif key in [Qt.Key_R]: sembol = str(randint(1,9))
 
         if sembol and sembol in self.butonlar:
             btn = self.butonlar[sembol]
@@ -1009,6 +1125,9 @@ class NeonHesapMakinesi(QWidget):
 
 
 if __name__ == "__main__":
+    QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
+    QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
+    
     app = QApplication(sys.argv)
     window = NeonHesapMakinesi()
     window.show()
