@@ -1,7 +1,7 @@
-![resim1](1.png)
-![resim2](2.png)![resim3](3.png)
-![resim4](4.png)![resim5](5.png)
-![resim6](6.png)
+![resim11](11.png)
+![resim22](22.png)![resim33](33.png)
+![resim44](44.png)![resim55](55.png)
+![resim66](66.png)
 
 
 Neon Hesap Makinesi (Neon Calculator)
