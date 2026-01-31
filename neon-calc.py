@@ -13,10 +13,10 @@ from PyQt5 import QtGui
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QGridLayout, QTextEdit, QPushButton,
     QMenu, QHBoxLayout, QSpacerItem, QSizePolicy, QDialog, QLabel,
-    QScrollArea, QActionGroup, QColorDialog, QFileDialog
+    QScrollArea, QActionGroup, QColorDialog, QFileDialog, QSlider, QCheckBox
 )
-from PyQt5.QtCore import Qt, QTimer
-from PyQt5.QtGui import QTextCursor, QTextOption, QColor
+from PyQt5.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve, pyqtProperty, QPoint
+from PyQt5.QtGui import QTextCursor, QTextOption, QColor, QFont
 
 getcontext().prec = 69
 
@@ -35,7 +35,9 @@ DARK_USER_COLORS_DEFAULT = {
     "operators": "#00c2ff",
     "danger": "#ff4d4d",
     "screen": "#e0e0e0",
-    "screen_border": "#444444"
+    "screen_border": "#444444",
+    "bg": "#0a0a0a",
+    "accent": "#00d4ff"
 }
 
 LIGHT_USER_COLORS_DEFAULT = {
@@ -43,8 +45,36 @@ LIGHT_USER_COLORS_DEFAULT = {
     "operators": "#34495e",
     "danger": "#c0392b",
     "screen": "#000000",
-    "screen_border": "#666666"
+    "screen_border": "#666666",
+    "bg": "#f8f9fa",
+    "accent": "#3498db"
 }
+
+
+class AnimatedButton(QPushButton):
+    def __init__(self, text, parent=None):
+        super().__init__(text, parent)
+        self._glow_intensity = 0
+        self.animation = QPropertyAnimation(self, b"glow_intensity")
+        self.animation.setDuration(150)
+        self.animation.setEasingCurve(QEasingCurve.OutCubic)
+        
+    @pyqtProperty(int)
+    def glow_intensity(self):
+        return self._glow_intensity
+    
+    @glow_intensity.setter
+    def glow_intensity(self, value):
+        self._glow_intensity = value
+        self.update()
+        
+    def animate_press(self):
+        self.animation.setStartValue(0)
+        self.animation.setEndValue(100)
+        self.animation.start()
+        QTimer.singleShot(150, lambda: self.animation.setDirection(QPropertyAnimation.Backward))
+        QTimer.singleShot(150, self.animation.start)
+
 
 class ClickableLabel(QLabel):
     def __init__(self, text, ana_pencere, yazi_rengi):
@@ -234,19 +264,26 @@ class NeonHesapMakinesi(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Neon Hesap Makinesi")
-        self.setFixedSize(340, 575)
-
+        
+        # Pencere boyutu ayarları
+        self.base_width = 380
+        self.base_height = 640
+        self.window_scale = 1.0
+        
         ayarlar = self.hafizadan_yukle()
         self.renk_modu_karanlik = ayarlar[0]
         self.renk_modu_aydinlik = ayarlar[1]
         self.tema_modu = ayarlar[2]
         self.hassasiyet = ayarlar[3]
+        self.window_scale = ayarlar[4]
+        self.animasyon_aktif = ayarlar[5]
+        self.ses_aktif = ayarlar[6]
+        self.font_boyutu = ayarlar[7]
 
         self.dark_user_colors = DARK_USER_COLORS_DEFAULT.copy()
         self.light_user_colors = LIGHT_USER_COLORS_DEFAULT.copy()
 
         self.load_user_colors()
-
         self.setWindowIcon(QtGui.QIcon("/usr/share/pixmaps/neon-calc.png"))
 
         self.matematik_ifadesi = ""
@@ -258,10 +295,16 @@ class NeonHesapMakinesi(QWidget):
         getcontext().prec = self.hassasiyet
 
         self.init_ui()
+        self.apply_window_scale()
         self.tema_uygula()
 
         self.ekran.setContextMenuPolicy(Qt.CustomContextMenu)
         self.ekran.customContextMenuRequested.connect(self.show_ekran_context_menu)
+
+    def apply_window_scale(self):
+        w = int(self.base_width * self.window_scale)
+        h = int(self.base_height * self.window_scale)
+        self.setFixedSize(w, h)
 
     def load_user_colors(self):
         try:
@@ -283,26 +326,7 @@ class NeonHesapMakinesi(QWidget):
             pass
 
     def save_user_colors(self):
-        try:
-            lines = []
-            if os.path.exists(AYAR_DOSYASI):
-                with open(AYAR_DOSYASI, "r", encoding="utf-8") as f:
-                    for line in f:
-                        if not line.strip().startswith(("dark_user_color_", "light_user_color_", "hassasiyet=", "renk_modu_", "tema_modu=")):
-                            lines.append(line + "\n")
-
-            with open(AYAR_DOSYASI, "w", encoding="utf-8") as f:
-                f.writelines(lines)
-                f.write(f"hassasiyet={self.hassasiyet}\n")
-                f.write(f"renk_modu_karanlik={self.renk_modu_karanlik}\n")
-                f.write(f"renk_modu_aydinlik={self.renk_modu_aydinlik}\n")
-                f.write(f"tema_modu={self.tema_modu}\n")
-                for k, v in self.dark_user_colors.items():
-                    f.write(f"dark_user_color_{k}={v}\n")
-                for k, v in self.light_user_colors.items():
-                    f.write(f"light_user_color_{k}={v}\n")
-        except Exception as e:
-            print("Ayar kaydetme hatası:", e)
+        self.hafizaya_kaydet()
 
     def hafizadan_yukle(self):
         try:
@@ -327,11 +351,16 @@ class NeonHesapMakinesi(QWidget):
                     except:
                         hass = 69
 
-                    return (renk_karanlik, renk_aydinlik, tema, hass)
+                    scale = float(data.get("window_scale", 1.0))
+                    animasyon = int(data.get("animasyon_aktif", 1))
+                    ses = int(data.get("ses_aktif", 0))
+                    font_size = int(data.get("font_boyutu", 18))
+
+                    return (renk_karanlik, renk_aydinlik, tema, hass, scale, animasyon, ses, font_size)
         except Exception as e:
             print(f"Ayar yükleme hatası: {e}")
 
-        return (1, 1, 0, 69)
+        return (1, 1, 0, 69, 1.0, 1, 0, 18)
 
     def hafizaya_kaydet(self):
         try:
@@ -340,6 +369,10 @@ class NeonHesapMakinesi(QWidget):
                 f.write(f"renk_modu_karanlik={self.renk_modu_karanlik}\n")
                 f.write(f"renk_modu_aydinlik={self.renk_modu_aydinlik}\n")
                 f.write(f"tema_modu={self.tema_modu}\n")
+                f.write(f"window_scale={self.window_scale}\n")
+                f.write(f"animasyon_aktif={self.animasyon_aktif}\n")
+                f.write(f"ses_aktif={self.ses_aktif}\n")
+                f.write(f"font_boyutu={self.font_boyutu}\n")
                 for k, v in self.dark_user_colors.items():
                     f.write(f"dark_user_color_{k}={v}\n")
                 for k, v in self.light_user_colors.items():
@@ -370,7 +403,7 @@ class NeonHesapMakinesi(QWidget):
                 os.remove(GECMIS_DOSYASI)
         except:
             pass
-            
+
     def init_ui(self):
         layout = QVBoxLayout()
         layout.setContentsMargins(12, 10, 12, 15)
@@ -414,14 +447,16 @@ class NeonHesapMakinesi(QWidget):
         if current_hass in acts:
             acts[current_hass].setChecked(True)
 
-        
         self.custom_colors_act = self.menu.addAction("Renkleri Özelleştir...")
         self.custom_colors_act.triggered.connect(self.show_custom_colors_dialog)
+        
+        self.ayarlar_act = self.menu.addAction("Görünüm Ayarları...")
+        self.ayarlar_act.triggered.connect(self.show_settings_dialog)
 
         self.settings_btn.setMenu(self.menu)
 
         self.light_tema_act.triggered.connect(lambda: self.tema_degistir(1))
-        self.dark_tema_act.triggered.connect(lambda: self.tema_degistir(0))       
+        self.dark_tema_act.triggered.connect(lambda: self.tema_degistir(0))
         self.gecmis_act.triggered.connect(self.gecmisi_goster)
 
         ust_bar.addWidget(self.settings_btn)
@@ -431,7 +466,8 @@ class NeonHesapMakinesi(QWidget):
         self.ekran.setReadOnly(True)
         self.ekran.setFocusPolicy(Qt.NoFocus)
         self.ekran.setWordWrapMode(QTextOption.WrapAnywhere)
-        self.ekran.setFixedHeight(100)
+        ekran_height = int(100 * self.window_scale)
+        self.ekran.setFixedHeight(ekran_height)
         self.ekran.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.ekran.setText("0")
         self.ekran.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
@@ -453,6 +489,106 @@ class NeonHesapMakinesi(QWidget):
         layout.addLayout(self.grid)
 
         self.setLayout(layout)
+
+    def show_settings_dialog(self):
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Görünüm Ayarları")
+        dialog.setMinimumWidth(450)
+
+        if self.tema_modu == 1:
+            dialog.setStyleSheet("""
+                QDialog { background-color: #f8f9fa; color: #212529; }
+                QLabel { color: #212529; }
+                QPushButton { background-color: #3498db; color: white; border: none; padding: 8px 16px; border-radius: 6px; }
+                QPushButton:hover { background-color: #2980b9; }
+            """)
+        else:
+            dialog.setStyleSheet("""
+                QDialog { background-color: #1e1e1e; color: #e0e0e0; }
+                QLabel { color: #e0e0e0; }
+                QPushButton { background-color: #3498db; color: white; border: none; padding: 8px 16px; border-radius: 6px; }
+                QPushButton:hover { background-color: #2980b9; }
+            """)
+
+        layout = QVBoxLayout()
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(20)
+
+        title = QLabel("Görünüm Ayarları")
+        title.setStyleSheet("font-size: 18px; font-weight: bold; color: #3498db;")
+        title.setAlignment(Qt.AlignCenter)
+        layout.addWidget(title)
+
+        # Pencere Ölçeği
+        scale_layout = QHBoxLayout()
+        scale_label = QLabel(f"Pencere Ölçeği: {int(self.window_scale * 100)}%")
+        scale_label.setMinimumWidth(200)
+        scale_slider = QSlider(Qt.Horizontal)
+        scale_slider.setMinimum(70)
+        scale_slider.setMaximum(150)
+        scale_slider.setValue(int(self.window_scale * 100))
+        scale_slider.valueChanged.connect(lambda v: scale_label.setText(f"Pencere Ölçeği: {v}%"))
+        scale_slider.sliderReleased.connect(lambda: self.change_window_scale(scale_slider.value() / 100))
+        scale_layout.addWidget(scale_label)
+        scale_layout.addWidget(scale_slider)
+        layout.addLayout(scale_layout)
+
+        # Font Boyutu
+        font_layout = QHBoxLayout()
+        font_label = QLabel(f"Font Boyutu: {self.font_boyutu}px")
+        font_label.setMinimumWidth(200)
+        font_slider = QSlider(Qt.Horizontal)
+        font_slider.setMinimum(12)
+        font_slider.setMaximum(28)
+        font_slider.setValue(self.font_boyutu)
+        font_slider.valueChanged.connect(lambda v: font_label.setText(f"Font Boyutu: {v}px"))
+        font_slider.sliderReleased.connect(lambda: self.change_font_size(font_slider.value()))
+        font_layout.addWidget(font_label)
+        font_layout.addWidget(font_slider)
+        layout.addLayout(font_layout)
+
+        # Animasyon
+        anim_check = QCheckBox("Buton Animasyonları")
+        anim_check.setChecked(self.animasyon_aktif == 1)
+        anim_check.stateChanged.connect(lambda s: self.toggle_animation(s == Qt.Checked))
+        layout.addWidget(anim_check)
+
+        close_btn = QPushButton("Kapat")
+        close_btn.clicked.connect(dialog.accept)
+        layout.addWidget(close_btn, alignment=Qt.AlignCenter)
+
+        dialog.setLayout(layout)
+        dialog.exec_()
+
+    def change_window_scale(self, scale):
+        self.window_scale = scale
+        self.apply_window_scale()
+        self.hafizaya_kaydet()
+        
+        # Ekran yüksekliğini güncelle
+        ekran_height = int(100 * self.window_scale)
+        self.ekran.setFixedHeight(ekran_height)
+        
+        # Butonları yeniden oluştur
+        self.butonlari_sil()
+        self.butonlari_olustur()
+        self.tema_uygula()
+
+    def change_font_size(self, size):
+        self.font_boyutu = size
+        self.hafizaya_kaydet()
+        self.tema_uygula()
+
+    def toggle_animation(self, enabled):
+        self.animasyon_aktif = 1 if enabled else 0
+        self.hafizaya_kaydet()
+
+    def butonlari_sil(self):
+        for sembol in list(self.butonlar.keys()):
+            btn = self.butonlar[sembol]
+            self.grid.removeWidget(btn)
+            btn.deleteLater()
+        self.butonlar.clear()
 
     def hassasiyet_kaydet(self, yeni_hassasiyet):
         try:
@@ -555,11 +691,13 @@ class NeonHesapMakinesi(QWidget):
             row.addWidget(btn)
             layout.addLayout(row)
 
-        create_picker("numbers",      "Sayı tuşları (0-9, .)")
-        create_picker("operators",    "İşlem tuşları (+ - * / = () √)")
-        create_picker("danger",       "Temizle & Geri (C ⌫)")
-        create_picker("screen",       "Ekran yazı rengi")
-        create_picker("screen_border","Ekran çerçeve rengi")
+        create_picker("numbers", "Sayı tuşları (0-9, .)")
+        create_picker("operators", "İşlem tuşları (+ - * / = () √)")
+        create_picker("danger", "Temizle & Geri (C ⌫)")
+        create_picker("screen", "Ekran yazı rengi")
+        create_picker("screen_border", "Ekran çerçeve rengi")
+        create_picker("bg", "Arkaplan rengi")
+        create_picker("accent", "Vurgu rengi")
 
         close_btn = QPushButton("Kapat")
         close_btn.setStyleSheet("""
@@ -602,14 +740,17 @@ class NeonHesapMakinesi(QWidget):
             else:
                 btn_text = sembol
 
-            btn = QPushButton(btn_text)
+            if self.animasyon_aktif:
+                btn = AnimatedButton(btn_text)
+            else:
+                btn = QPushButton(btn_text)
 
-            if c_span == 1:   w = 72
-            elif c_span == 2: w = 152
-            elif c_span == 3: w = 232
-            else:             w = 312
+            base_w = 86
+            if c_span == 1: w = int(base_w * self.window_scale)
+            elif c_span == 2: w = int((base_w * 2 + 5) * self.window_scale)
+            else: w = int((base_w * 3 + 10) * self.window_scale)
 
-            h = 60 if r_span == 1 else 128
+            h = int(60 * self.window_scale) if r_span == 1 else int(125 * self.window_scale)
             btn.setFixedSize(w, h)
             btn.setCursor(Qt.PointingHandCursor)
             btn.setFocusPolicy(Qt.NoFocus)
@@ -632,18 +773,47 @@ class NeonHesapMakinesi(QWidget):
         self.tema_uygula()
 
     def tema_uygula(self):
-        bg_color = "#000000" if self.tema_modu == 0 else "#f8f9fa"
-        self.setStyleSheet(f"QWidget {{ background-color: {bg_color}; }}")
+        current_colors = self.light_user_colors if self.tema_modu == 1 else self.dark_user_colors
+        bg_color = current_colors.get("bg", "#000000" if self.tema_modu == 0 else "#f8f9fa")
+        accent = current_colors.get("accent", "#3498db")
+        
+        self.setStyleSheet(f"""
+            QWidget {{ 
+                background-color: {bg_color}; 
+            }}
+        """)
 
         self.menu.setStyleSheet(f"""
-            QMenu {{ background-color: #1e1e1e; color: #e0e0e0; border: 2px solid #444444; padding: 6px; }}
-            QMenu::item {{ padding: 10px 25px; }}
-            QMenu::item:selected {{ background-color: #3498db; color: white; }}
+            QMenu {{ 
+                background-color: #1e1e1e; 
+                color: #e0e0e0; 
+                border: 2px solid {accent}; 
+                padding: 6px; 
+                border-radius: 8px;
+            }}
+            QMenu::item {{ 
+                padding: 10px 25px; 
+                border-radius: 4px;
+            }}
+            QMenu::item:selected {{ 
+                background-color: {accent}; 
+                color: white; 
+            }}
         """)
 
         self.settings_btn.setStyleSheet(f"""
-            QPushButton {{ background-color: transparent; color: #3498db; border: 2px solid #444444; border-radius: 8px; font-size: 20px; }}
-            QPushButton:hover {{ background-color: #3498db; color: white; }}
+            QPushButton {{ 
+                background-color: transparent; 
+                color: {accent}; 
+                border: 2px solid {accent}; 
+                border-radius: 8px; 
+                font-size: 20px; 
+            }}
+            QPushButton:hover {{ 
+                background-color: {accent}; 
+                color: white; 
+                border: 2px solid {accent};
+            }}
         """)
 
         self.ekran_stilini_guncelle()
@@ -656,6 +826,9 @@ class NeonHesapMakinesi(QWidget):
         ekran_yazi = current_colors["screen"]
         ekran_cerceve = current_colors.get("screen_border", "#444444")
         bg_color = "#ffffff" if self.tema_modu == 1 else "#000000"
+        accent = current_colors.get("accent", "#3498db")
+
+        font_size = int(self.font_boyutu * self.window_scale)
 
         self.ekran.setStyleSheet(f"""
             QTextEdit {{
@@ -663,11 +836,12 @@ class NeonHesapMakinesi(QWidget):
                 color: {ekran_yazi};
                 border: 3px solid {ekran_cerceve};
                 border-radius: 10px;
-                padding-top: 25px;
-                padding-left: 8px;
-                padding-right: 12px;
-                font-size: 22px;
+                padding-top: {int(25 * self.window_scale)}px;
+                padding-left: {int(8 * self.window_scale)}px;
+                padding-right: {int(12 * self.window_scale)}px;
+                font-size: {font_size}px;
                 font-family: '{self.font_name}';
+                selection-background-color: {accent};
             }}
         """)
 
@@ -683,37 +857,60 @@ class NeonHesapMakinesi(QWidget):
         else:
             user_color = NEON_YESIL
 
+        font_size = int(self.font_boyutu * self.window_scale)
+        border_width = max(1, int(1.5 * self.window_scale))
+
+        shadow_effect = ""
+        if self.tema_modu == 0:
+            shadow_effect = f"""
+                text-shadow: 0 0 {int(5 * self.window_scale)}px {user_color}80,
+                             0 0 {int(10 * self.window_scale)}px {user_color}40;
+            """
+
         return f"""
             QPushButton {{
                 background-color: transparent;
                 color: {user_color};
-                border: 1.5px solid {user_color};
-                border-radius: 10px;
-                font-size: 18px;
+                border: {border_width}px solid {user_color};
+                border-radius: {int(10 * self.window_scale)}px;
+                font-size: {font_size}px;
                 font-family: '{self.font_name}';
+                font-weight: 500;
+                {shadow_effect}
             }}
             QPushButton:hover {{
-                background-color: {user_color};
-                color: {'#000000' if self.is_light_color(user_color) else '#ffffff'};
+                background-color: {user_color}40;
+                color: {user_color};
+                border: {int(2 * self.window_scale)}px solid {user_color};
             }}
             QPushButton:pressed {{
                 background-color: {user_color};
                 color: {'#000000' if self.is_light_color(user_color) else '#ffffff'};
+                border: {int(2 * self.window_scale)}px solid {user_color};
             }}
         """
 
     def show_ekran_context_menu(self, position):
         menu = QMenu(self)
-        menu.setStyleSheet("""
-            QMenu {
+        current_colors = self.light_user_colors if self.tema_modu == 1 else self.dark_user_colors
+        accent = current_colors.get("accent", "#3498db")
+        
+        menu.setStyleSheet(f"""
+            QMenu {{
                 background-color: #1e1e1e;
                 color: #e0e0e0;
-                border: 2px solid #444444;
-            }
-            QMenu::item:selected {
-                background-color: #3498db;
+                border: 2px solid {accent};
+                border-radius: 8px;
+                padding: 4px;
+            }}
+            QMenu::item {{
+                padding: 8px 20px;
+                border-radius: 4px;
+            }}
+            QMenu::item:selected {{
+                background-color: {accent};
                 color: white;
-            }
+            }}
         """)
 
         copy_act = menu.addAction("Kopyala")
@@ -774,11 +971,11 @@ class NeonHesapMakinesi(QWidget):
         sembol = None
         if Qt.Key_0 <= key <= Qt.Key_9:
             sembol = event.text()
-        elif key == Qt.Key_Plus:    sembol = "+"
-        elif key == Qt.Key_Minus:   sembol = "-"
+        elif key == Qt.Key_Plus: sembol = "+"
+        elif key == Qt.Key_Minus: sembol = "-"
         elif key == Qt.Key_Asterisk: sembol = "*"
-        elif key == Qt.Key_Slash:   sembol = "/"
-        elif key == Qt.Key_ParenLeft:  sembol = "("
+        elif key == Qt.Key_Slash: sembol = "/"
+        elif key == Qt.Key_ParenLeft: sembol = "("
         elif key == Qt.Key_ParenRight: sembol = ")"
         elif key in [Qt.Key_Comma, Qt.Key_Period]: sembol = "."
         elif key in [Qt.Key_Enter, Qt.Key_Return]: sembol = "="
@@ -787,9 +984,11 @@ class NeonHesapMakinesi(QWidget):
 
         if sembol and sembol in self.butonlar:
             btn = self.butonlar[sembol]
-            btn.setDown(True)
-            btn.setStyleSheet(self.get_neon_style(sembol))
-            QTimer.singleShot(120, lambda b=btn: b.setDown(False))
+            if self.animasyon_aktif and isinstance(btn, AnimatedButton):
+                btn.animate_press()
+            else:
+                btn.setDown(True)
+                QTimer.singleShot(120, lambda b=btn: b.setDown(False))
             self.aksiyon(sembol)
 
     def karekoku_hesapla(self, deger):
@@ -802,17 +1001,9 @@ class NeonHesapMakinesi(QWidget):
 
     def ifadeyi_isle(self, ifade):
         try:
-            # ÖNEMLİ: Parantez işlemlerinden ÖNCE çarpma kurallarını uygula
-            # 1. Parantez sonrası rakam: )2 → )*2
             ifade = re.sub(r'\)(\d)', r')*\1', ifade)
-            
-            # 2. Rakam sonrası parantez: 2( → 2*(
             ifade = re.sub(r'(\d)\(', r'\1*(', ifade)
-            
-            # 3. Rakam sonrası √: 2√ → 2*√
             ifade = re.sub(r'(\d)√', r'\1*√', ifade)
-            
-            # 4. Parantez sonrası √: )√ → )*√
             ifade = re.sub(r'\)√', r')*√', ifade)
 
             max_iterations = 100
@@ -822,7 +1013,6 @@ class NeonHesapMakinesi(QWidget):
                 iteration += 1
                 degisiklik = False
 
-                # √ ile basit sayı: √9 → 3
                 sqrt_simple = r'√(\d+\.?\d*)'
                 match = re.search(sqrt_simple, ifade)
                 if match:
@@ -834,7 +1024,6 @@ class NeonHesapMakinesi(QWidget):
                     degisiklik = True
                     continue
 
-                # √ ile parantez (içinde √ yok): √(4+5) → 3
                 sqrt_no_inner_sqrt = r'√\(([^()√]*)\)'
                 match = re.search(sqrt_no_inner_sqrt, ifade)
                 if match:
@@ -848,8 +1037,6 @@ class NeonHesapMakinesi(QWidget):
                     degisiklik = True
                     continue
 
-                # Normal parantez (√ ile başlamayan): (2+2) → 4
-                # ÖNEMLİ: Burada sonucu parantez içine alarak yan yana rakam oluşmasını önle
                 normal_paren = r'(?<!√)\(([^()√]*)\)'
                 match = re.search(normal_paren, ifade)
                 if match:
@@ -857,28 +1044,21 @@ class NeonHesapMakinesi(QWidget):
                     try:
                         icerik_decimal = re.sub(r'(\d+\.?\d*|\.\d+)', r"Decimal('\1')", icerik)
                         sonuc = eval(icerik_decimal, {"Decimal": Decimal})
-                        
-                        # Parantez sonucunu kontrol et - eğer öncesinde veya sonrasında rakam varsa
-                        # sonucu parantez içinde tut veya çarpma ekle
+
                         bas = match.start()
                         son = match.end()
-                        
-                        # Sonucu string'e çevir
                         sonuc_str = str(sonuc)
-                        
-                        # Öncesinde rakam var mı kontrol et
+
                         oncesi_rakam = bas > 0 and ifade[bas-1].isdigit()
-                        # Sonrasında rakam var mı kontrol et
                         sonrasi_rakam = son < len(ifade) and ifade[son].isdigit()
-                        
-                        # Eğer öncesi veya sonrası rakam ise çarpma ekle
+
                         if oncesi_rakam:
                             ifade = ifade[:bas] + '*' + sonuc_str + ifade[son:]
                         elif sonrasi_rakam:
                             ifade = ifade[:bas] + sonuc_str + '*' + ifade[son:]
                         else:
                             ifade = ifade[:bas] + sonuc_str + ifade[son:]
-                        
+
                         degisiklik = True
                         continue
                     except:
@@ -987,11 +1167,11 @@ class NeonHesapMakinesi(QWidget):
         self.ekran.setPlainText(gorunum)
         self.ekran.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
 
-        if len(gorunum) >= 28:
-            new_style = self.ekran.styleSheet().replace("padding-top: 25px;", "padding-top: 6px;")
-        else:
-            new_style = self.ekran.styleSheet().replace("padding-top: 6px;", "padding-top: 25px;")
-
+        padding_top = int(25 * self.window_scale) if len(gorunum) < 28 else int(6 * self.window_scale)
+        
+        current_style = self.ekran.styleSheet()
+        import re as regex
+        new_style = regex.sub(r'padding-top: \d+px;', f'padding-top: {padding_top}px;', current_style)
         self.ekran.setStyleSheet(new_style)
 
         cursor = self.ekran.textCursor()
